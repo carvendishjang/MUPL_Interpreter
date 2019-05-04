@@ -1,9 +1,9 @@
-;; CSE341, Programming Languages, Homework 5
+;; To realize an interpreter of MUPL (Make Up Programming Language) language
 
 #lang racket
 (provide (all-defined-out)) ;; so we can put tests in a second file
 
-;; definition of structures for MUPL programs - Do NOT change
+;; definition of structures for MUPL programs
 (struct var  (string) #:transparent)  ;; a variable, e.g., (var "foo")
 (struct int  (num)    #:transparent)  ;; a constant number, e.g., (int 17)
 (struct add  (e1 e2)  #:transparent)  ;; add two expressions
@@ -21,7 +21,7 @@
 ;; a closure is not in "source" programs; it is what functions evaluate to
 (struct closure (env fun) #:transparent) 
 
-;; Problem 1
+;; Interesting functions that make racket list and mupl list interchangeable
 
 (define (racketlist->mupllist xs)
   (letrec ([f (lambda (x)
@@ -39,19 +39,14 @@
     (cond [(munit? es) null]
           [#t (cons (f (apair-e1 es)) (muplist->racketlist (apair-e2 es)))])))
 
-;; Problem 2
+;; The Interpreter
 
 ;; lookup a variable in an environment
-;; Do NOT change this function
 (define (envlookup env str)
   (cond [(null? env) (error "unbound variable during evaluation" str)]
         [(equal? (car (car env)) str) (cdr (car env))]
         [#t (envlookup (cdr env) str)]))
 
-;; Do NOT change the two cases given to you.  
-;; DO add more cases for other kinds of MUPL expressions.
-;; We will test eval-under-env by calling it directly even though
-;; "in real life" it would be a helper function of eval-exp.
 (define (eval-under-env e env)
   (cond [(var? e) 
          (envlookup env (var-string e))]
@@ -117,13 +112,13 @@
                (int 0)))]
         [#t (error (format "bad MUPL expression: ~v" e))]))
 
+;; A simple test file for the most complicated "call" case
 (define e-test (call (fun "f" "x" (ifnz (var "x") (add (call (var "f") (add (int -1)  (var "x"))) (int 2)) (int 0))) (int 4)))
 
-;; Do NOT change
 (define (eval-exp e)
   (eval-under-env e null))
         
-;; Problem 3(eval-exp (call (call mupl-filter (fun null "x" (isgreater (var "x") (int 6)))) (apair (int 4) (apair (int 7) (apair (int 2) (apair (int 8) (munit)))))))
+;; A little expansion of the language by adding some racket function, which behaves like macros for mupl language
 
 (define (ifmunit e1 e2 e3) (ifnz (ismunit e1) e2 e3))
 
@@ -134,7 +129,7 @@
 (define (ifeq e1 e2 e3 e4)
   (ifnz (add (isgreater e1 e2) (isgreater e2 e1)) e4 e3))
 
-;; Problem 4
+;; We can write mupl expressions directly in racket
 
 (define mupl-filter
   (fun "g" "f"
@@ -145,9 +140,10 @@
                            (apair (first (var "xs")) (call (call (var "g") (var "f")) (second (var "xs"))))
                            (call (call (var "g") (var "f")) (second (var "xs"))))))))
 
-
-
 (define mupl-all-gt
   (mlet "filter" mupl-filter
         (fun null "k"
              (call (var "filter") (fun null "y" (isgreater (var "y") (var "k")))))))
+
+;; A test file for  mupl-filter
+(define test2 (eval-exp (call (call mupl-filter (fun null "x" (isgreater (var "x") (int 6)))) (apair (int 4) (apair (int 7) (apair (int 2) (apair (int 8) (munit))))))))
