@@ -1,0 +1,150 @@
+
+;; To realize an interpreter of MUPL (Make Up Programming Language) language
+
+#lang racket
+(provide (all-defined-out)) ;; so we can put tests in a second file
+
+;; definition of structures for MUPL programs
+(struct var  (string) #:transparent)  ;; a variable, e.g., (var "foo")
+(struct int  (num)    #:transparent)  ;; a constant number, e.g., (int 17)
+(struct add  (e1 e2)  #:transparent)  ;; add two expressions
+(struct isgreater (e1 e2)    #:transparent) ;; if e1 > e2 then 1 else 0
+(struct ifnz (e1 e2 e3) #:transparent) ;; if not zero e1 then e2 else e3
+(struct fun  (nameopt formal body) #:transparent) ;; a recursive(?) 1-argument function
+(struct call (funexp actual)       #:transparent) ;; function call
+(struct mlet (var e body) #:transparent) ;; a local binding (let var = e in body) 
+(struct apair   (e1 e2) #:transparent) ;; make a new pair
+(struct first   (e)     #:transparent) ;; get first part of a pair
+(struct second  (e)     #:transparent) ;; get second part of a pair
+(struct munit   ()      #:transparent) ;; unit value -- good for ending a list
+(struct ismunit (e)     #:transparent) ;; if e1 is unit then 1 else 0
+
+;; a closure is not in "source" programs; it is what functions evaluate to
+(struct closure (env fun) #:transparent) 
+
+;; Interesting functions that make racket list and mupl list interchangeable
+
+(define (racketlist->mupllist xs)
+  (letrec ([f (lambda (x)
+             (cond [(null? x) (munit)]
+                   [(integer? x) (int x)]
+                   [(pair? x) (apair (f (car x)) (f (cdr x)))]))])
+    (cond [(null? xs) (munit)]
+          [#t (apair (f (car xs)) (racketlist->mupllist (cdr xs)))])))
+
+(define (muplist->racketlist es)
+  (letrec ([f (lambda (e)
+             (cond [(munit? e) null]
+                   [(int? e) (int-num e)]
+                   [(apair? e) (cons (f (apair-e1 e)) (f (apair-e2 e)))]))])
+    (cond [(munit? es) null]
+          [#t (cons (f (apair-e1 es)) (muplist->racketlist (apair-e2 es)))])))
+
+;; The Interpreter
+
+;; lookup a variable in an environment
+(define (envlookup env str)
+  (cond [(null? env) (error "unbound variable during evaluation" str)]
+        [(equal? (car (car env)) str) (cdr (car env))]
+        [#t (envlookup (cdr env) str)]))
+
+(define (eval-under-env e env)
+  (cond [(var? e) 
+         (envlookup env (var-string e))]
+        [(or (int? e) (munit? e) (closure? e)) e]
+        [(add? e) 
+         (let ([v1 (eval-under-env (add-e1 e) env)]
+               [v2 (eval-under-env (add-e2 e) env)])
+           (if (and (int? v1)
+                    (int? v2))
+               (int (+ (int-num v1) 
+                       (int-num v2)))
+               (error "MUPL addition applied to non-number")))]
+        ;; CHANGE add more cases here
+        [(isgreater? e)
+         (let ([v1 (eval-under-env (isgreater-e1 e) env)]
+               [v2 (eval-under-env (isgreater-e2 e) env)])
+           (if (and (int? v1)
+                    (int? v2))
+               (if (> (int-num v1)
+                      (int-num v2))
+                   (int 1)
+                   (int 0))
+               (error "isgreater applied to non-number")))]
+        [(ifnz? e)
+         (let ([v1 (eval-under-env (ifnz-e1 e) env)])
+           (if (int? v1)
+               (if (= 0 (int-num v1))
+                   (eval-under-env (ifnz-e3 e) env)
+                   (eval-under-env (ifnz-e2 e) env))
+               (error "ifnz applied to non-number")))]
+        [(fun? e)
+         (closure env e)]
+        [(mlet? e)
+         (eval-under-env (mlet-body e) (cons (cons (mlet-var e) (eval-under-env (mlet-e e) env)) env))]
+        [(call? e)
+         (letrec ([cloj (eval-under-env (call-funexp e) env)]
+                  [arg (eval-under-env (call-actual e) env)])
+           (if (closure? cloj)
+               (if (null? (fun-nameopt (closure-fun cloj)))
+                   (letrec ([new-env (cons (cons (fun-formal (closure-fun cloj)) arg) (closure-env cloj))])
+                 (eval-under-env (fun-body (closure-fun cloj)) new-env))
+                   (letrec ([new-env (cons (cons (fun-nameopt (closure-fun cloj)) cloj) (cons (cons (fun-formal (closure-fun cloj)) arg) (closure-env cloj)))])
+                 (eval-under-env (fun-body (closure-fun cloj)) new-env)))
+               (error "call applied to non-closure")))]
+        [(apair? e)
+         (let ([v1 (eval-under-env (apair-e1 e) env)]
+               [v2 (eval-under-env (apair-e2 e) env)])
+           (apair v1 v2))]
+        [(first? e)
+         (let ([v (eval-under-env (first-e e) env)])
+           (if (apair? v)
+               (apair-e1 v)
+               (error "first applied to non-pair")))]
+        [(second? e)
+         (let ([v (eval-under-env (second-e e) env)])
+           (if (apair? v)
+               (apair-e2 v)
+               (error "second applied to non-pair")))]
+        [(ismunit? e)
+         (let ([v (eval-under-env (ismunit-e e) env)])
+           (if (munit? v)
+               (int 1)
+               (int 0)))]
+        [#t (error (format "bad MUPL expression: ~v" e))]))
+
+;; A simple test file for the most complicated "call" case
+(define e-test (call (fun "f" "x" (ifnz (var "x") (add (call (var "f") (add (int -1)  (var "x"))) (int 2)) (int 0))) (int 4)))
+
+(define (eval-exp e)
+  (eval-under-env e null))
+        
+;; A little expansion of the language by adding some racket function, which behaves like macros for mupl language
+
+(define (ifmunit e1 e2 e3) (ifnz (ismunit e1) e2 e3))
+
+(define (mlet* bs e2)
+  (cond [(null? bs) e2]
+        [#t (mlet* (cdr bs) (mlet (car (car bs)) (cdr (car bs)) e2))]))
+
+(define (ifeq e1 e2 e3 e4)
+  (ifnz (add (isgreater e1 e2) (isgreater e2 e1)) e4 e3))
+
+;; We can write mupl expressions directly in racket
+
+(define mupl-filter
+  (fun "g" "f"
+       (fun null "xs"
+            (ifmunit (var "xs")
+                     (munit)
+                     (ifnz (call (var "f") (first (var "xs")))
+                           (apair (first (var "xs")) (call (call (var "g") (var "f")) (second (var "xs"))))
+                           (call (call (var "g") (var "f")) (second (var "xs"))))))))
+
+(define mupl-all-gt
+  (mlet "filter" mupl-filter
+        (fun null "k"
+             (call (var "filter") (fun null "y" (isgreater (var "y") (var "k")))))))
+
+;; A test file for  mupl-filter
+(define test2 (eval-exp (call (call mupl-filter (fun null "x" (isgreater (var "x") (int 6)))) (apair (int 4) (apair (int 7) (apair (int 2) (apair (int 8) (munit))))))))
