@@ -32,13 +32,13 @@
     (cond [(null? xs) (munit)]
           [#t (apair (f (car xs)) (racketlist->mupllist (cdr xs)))])))
 
-(define (muplist->racketlist es)
+(define (mupllist->racketlist es)
   (letrec ([f (lambda (e)
              (cond [(munit? e) null]
                    [(int? e) (int-num e)]
                    [(apair? e) (cons (f (apair-e1 e)) (f (apair-e2 e)))]))])
     (cond [(munit? es) null]
-          [#t (cons (f (apair-e1 es)) (muplist->racketlist (apair-e2 es)))])))
+          [#t (cons (f (apair-e1 es)) (mupllist->racketlist (apair-e2 es)))])))
 
 ;; The Interpreter
 
