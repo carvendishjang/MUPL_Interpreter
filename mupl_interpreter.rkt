@@ -7,7 +7,7 @@
 (struct var  (string) #:transparent)  ;; a variable, e.g., (var "foo")
 (struct int  (num)    #:transparent)  ;; a constant number, e.g., (int 17)
 (struct add  (e1 e2)  #:transparent)  ;; add two expressions
-(struct multiply (e1 e2) #:transparent)  ;;multiply two expressions
+(struct multiply (e1 e2) #:transparent)  ;; multiply two expressions
 (struct isgreater (e1 e2)    #:transparent) ;; if e1 > e2 then 1 else 0
 (struct ifnz (e1 e2 e3) #:transparent) ;; if not zero e1 then e2 else e3
 (struct fun  (nameopt formal body) #:transparent) ;; a recursive(?) 1-argument function
