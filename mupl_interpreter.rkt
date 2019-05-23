@@ -1,4 +1,3 @@
-
 ;; To realize an interpreter of MUPL (Make Up Programming Language) language
 
 #lang racket
@@ -8,6 +7,7 @@
 (struct var  (string) #:transparent)  ;; a variable, e.g., (var "foo")
 (struct int  (num)    #:transparent)  ;; a constant number, e.g., (int 17)
 (struct add  (e1 e2)  #:transparent)  ;; add two expressions
+(struct multiply (e1 e2) #:transparent)  ;;multiply two expressions
 (struct isgreater (e1 e2)    #:transparent) ;; if e1 > e2 then 1 else 0
 (struct ifnz (e1 e2 e3) #:transparent) ;; if not zero e1 then e2 else e3
 (struct fun  (nameopt formal body) #:transparent) ;; a recursive(?) 1-argument function
@@ -60,7 +60,14 @@
                (int (+ (int-num v1) 
                        (int-num v2)))
                (error "MUPL addition applied to non-number")))]
-        ;; CHANGE add more cases here
+        [(multiply? e) 
+         (let ([v1 (eval-under-env (multiply-e1 e) env)]
+               [v2 (eval-under-env (multiply-e2 e) env)])
+           (if (and (int? v1)
+                    (int? v2))
+               (int (* (int-num v1) 
+                       (int-num v2)))
+               (error "MUPL multiplication applied to non-number")))]
         [(isgreater? e)
          (let ([v1 (eval-under-env (isgreater-e1 e) env)]
                [v2 (eval-under-env (isgreater-e2 e) env)])
@@ -141,10 +148,29 @@
                            (apair (first (var "xs")) (call (call (var "g") (var "f")) (second (var "xs"))))
                            (call (call (var "g") (var "f")) (second (var "xs"))))))))
 
+(define mupl-map
+  (fun "g" "f"
+       (fun null "xs"
+            (ifmunit (var "xs")
+                     (munit)
+                     (apair (call (var "f") (first (var "xs"))) (call (call (var "g") (var "f")) (second (var "xs"))))))))
+
+(define mupl-foldl
+  (fun "g" "f"
+       (fun null "z"
+            (fun null "xs"
+                 (ifmunit (var "xs")
+                          (var "z")
+                          (call (call (call (var "g") (var "f")) (call (call (var "f") (var "z")) (first (var "xs")))) (second (var "xs"))))))))
+
 (define mupl-all-gt
   (mlet "filter" mupl-filter
         (fun null "k"
              (call (var "filter") (fun null "y" (isgreater (var "y") (var "k")))))))
 
-;; A test file for  mupl-filter
+;; Test file for map, filter and foldl
 (define test2 (eval-exp (call (call mupl-filter (fun null "x" (isgreater (var "x") (int 6)))) (apair (int 4) (apair (int 7) (apair (int 2) (apair (int 8) (munit))))))))
+
+(define test3 (eval-exp (call (call mupl-map (fun null "x" (add (var "x") (int 6)))) (apair (int 4) (apair (int 7) (apair (int 2) (apair (int 8) (munit))))))))
+
+(define test4 (eval-exp (call (call (call mupl-foldl (fun null "x" (fun null "y" (add (var "x") (var "y"))))) (int 0)) (apair (int 4) (apair (int 7) (apair (int 2) (apair (int 8) (munit))))))))
